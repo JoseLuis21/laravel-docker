@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  # NGINX PROXY SERVICE #
+  laravel-nginx:
+    image: nginx:latest
+    container_name: laravel-nginx
+    command: '/bin/sh -c ''while :; do sleep 8h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
+    restart: unless-stopped
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - ${WEBSITE_PATH_LOCAL}:${WEBSITE_PATH_CONTAINER}:rw
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    environment:
+      TZ: "${TIME_ZONE}"
+    depends_on:
+      - laravel-php-fpm
+    healthcheck:
+      test: curl --fail -I http://localhost || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "100mb"
+    networks:
+      - public-network
+
+  # laravel PHP FPM #
+  laravel-php-fpm:
+    build:
+      context: ./infrastructure/
+      dockerfile: Dockerfile
+      args:
+        PHP: ${PHP}
+    image: laravel-php-fpm:${PHP}
+    container_name: laravel-php-fpm
+    restart: unless-stopped
+    hostname: laravel-php-fpm
+    working_dir: ${WEBSITE_PATH_CONTAINER}
+    volumes:
+      - ${WEBSITE_PATH_LOCAL}:${WEBSITE_PATH_CONTAINER}:rw
+      - ./infrastructure/php-fpm/php-variables.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+    environment:
+      TZ: "${TIME_ZONE}"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        /bin/chown -R 82:82 .
+        /usr/local/bin/php --version
+        /usr/local/sbin/php-fpm
+    expose:
+      - "9000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "100mb"
+    networks:
+      - public-network
+
+networks:
+  public-network:
+    name: public-network
+    driver: bridge
